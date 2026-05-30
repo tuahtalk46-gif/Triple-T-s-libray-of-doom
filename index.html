@@ -72,6 +72,8 @@
   </button>
   <audio id="freddy-honk-audio" src="https://quicksounds.com/uploads/tracks/2059485122_2027762566_452740624.mp3" preload="auto"></audio>
   <audio id="save-cheer-audio" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg" preload="auto"></audio>
+  <audio id="boing-audio" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+  <div id="freddy-easter-egg" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.95);"><div id="freddy-center" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-size:140px;cursor:pointer;animation:spin 2s linear infinite;">🐻</div></div>
 
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js';
@@ -131,6 +133,79 @@
     let savedBooks = {};
     let activeFilter = 'all';
     let musicActive = false;
+    let easterEggTriggered = false;
+    let sequenceBuffer = '';
+    const boingAudio = document.getElementById('boing-audio');
+
+    function playBoing() {
+      if (boingAudio) {
+        boingAudio.volume = 0.3;
+        boingAudio.currentTime = 0;
+        boingAudio.play().catch(() => {});
+      }
+    }
+
+    function hasBadge() {
+      return localStorage.getItem('awesomeBadge') === 'true';
+    }
+
+    function awardBadge() {
+      localStorage.setItem('awesomeBadge', 'true');
+    }
+
+    function bounceElement(el) {
+      const orig = el.style.animation;
+      el.style.animation = 'awesome-bounce 0.6s ease-out';
+      el.addEventListener('animationend', () => { el.style.animation = orig; }, { once: true });
+    }
+
+    function showBadgeInCorner() {
+      if (document.getElementById('awesome-badge')) return;
+      const badge = document.createElement('div');
+      badge.id = 'awesome-badge';
+      badge.style.cssText = `position:fixed;bottom:24px;left:24px;width:70px;height:70px;background:rgba(141,252,122,0.2);border:2px solid rgba(141,252,122,0.5);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:40px;cursor:pointer;z-index:100;user-select:none;transition:all 0.2s ease;`;
+      badge.innerHTML = '🐻';
+      badge.addEventListener('click', () => { playBoing(); bounceElement(badge); });
+      badge.addEventListener('mouseenter', () => { badge.style.boxShadow = '0 0 20px rgba(141,252,122,0.6)'; badge.style.transform = 'scale(1.1)'; });
+      badge.addEventListener('mouseleave', () => { badge.style.boxShadow = 'none'; badge.style.transform = 'scale(1)'; });
+      document.body.appendChild(badge);
+    }
+
+    function triggerEasterEgg() {
+      if (easterEggTriggered) return;
+      easterEggTriggered = true;
+      playBoing();
+      const easterEgg = document.getElementById('freddy-easter-egg');
+      const freddy = document.getElementById('freddy-center');
+      const appShell = document.querySelector('.app-shell');
+      easterEgg.style.display = 'block';
+      const elements = appShell.querySelectorAll('*');
+      elements.forEach((el, i) => {
+        el.style.animation = `fallDown ${2 + Math.random() * 1}s ease-in forwards`;
+        el.style.animationDelay = `${i * 0.05}s`;
+      });
+      const handleClick = () => {
+        awardBadge();
+        easterEgg.style.display = 'none';
+        easterEggTriggered = false;
+        elements.forEach(el => { el.style.animation = 'none'; el.style.animationDelay = ''; el.style.transform = ''; el.style.opacity = ''; });
+        showBadgeInCorner();
+        playBoing();
+      };
+      freddy.addEventListener('click', handleClick, { once: true });
+    }
+
+    document.addEventListener('keydown', (e) => {
+      sequenceBuffer = (sequenceBuffer + e.key.toUpperCase()).slice(-7);
+      if (sequenceBuffer.includes('AWESOME') && !easterEggTriggered) {
+        triggerEasterEgg();
+        sequenceBuffer = '';
+      }
+    });
+
+    if (hasBadge()) {
+      setTimeout(() => showBadgeInCorner(), 500);
+    }
 
     function getListColRef() {
       return collection(db, 'users', activeUserId, 'reading-list');
