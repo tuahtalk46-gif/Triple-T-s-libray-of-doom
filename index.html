@@ -16,6 +16,17 @@
         <p class="eyebrow">BookFinder</p>
         <h1>Search books, save your reading list, and sync with Firestore.</h1>
         <p class="hero-copy">Scan the book archive, secure your reading list, and keep everything synced in real time using Firebase Firestore.</p>
+
+        <div class="hero-actions">
+          <div class="hero-card">
+            <p id="auth-status" class="hero-card__label">Not signed in</p>
+            <button id="auth-button" type="button" class="ghost-btn">Log in / sign in with Google</button>
+          </div>
+          <div class="hero-card">
+            <p class="hero-card__label">Lobby music</p>
+            <button id="music-toggle-button" type="button" class="ghost-btn">Play lobby music</button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -60,6 +71,7 @@
     <span class="nose-dot"></span>
   </button>
   <audio id="freddy-honk-audio" src="https://quicksounds.com/uploads/tracks/2059485122_2027762566_452740624.mp3" preload="auto"></audio>
+  <audio id="save-cheer-audio" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg" preload="auto"></audio>
 
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js';
@@ -73,6 +85,13 @@
       updateDoc,
       deleteDoc
     } from 'https://www.gstatic.com/firebasejs/10.10.0/firebase-firestore.js';
+    import {
+      getAuth,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signOut,
+      onAuthStateChanged
+    } from 'https://www.gstatic.com/firebasejs/10.10.0/firebase-auth.js';
 
     const USER_ID = 'default-user';
     const FIREBASE_CONFIG = {
@@ -88,7 +107,11 @@
     const app = initializeApp(FIREBASE_CONFIG);
     const analytics = getAnalytics(app);
     const db = getFirestore(app);
-    const listColRef = collection(db, 'users', USER_ID, 'reading-list');
+    const auth = getAuth(app);
+    const googleProvider = new GoogleAuthProvider();
+
+    let activeUserId = USER_ID;
+    let unsubscribeReadingList = null;
 
     const searchForm = document.getElementById('search-form');
     const searchInput = document.getElementById('search-input');
@@ -96,9 +119,72 @@
     const searchStatus = document.getElementById('search-status');
     const readingList = document.getElementById('reading-list');
     const filterButtons = Array.from(document.querySelectorAll('.filter-btn'));
+    const authStatus = document.getElementById('auth-status');
+    const authButton = document.getElementById('auth-button');
+    const musicToggleButton = document.getElementById('music-toggle-button');
+    const saveCheerAudio = document.getElementById('save-cheer-audio');
+    const musicEmbedContainer = document.createElement('div');
+    musicEmbedContainer.id = 'music-embed-container';
+    musicEmbedContainer.style.display = 'none';
+    document.body.appendChild(musicEmbedContainer);
 
     let savedBooks = {};
     let activeFilter = 'all';
+    let musicActive = false;
+
+    function getListColRef() {
+      return collection(db, 'users', activeUserId, 'reading-list');
+    }
+
+    function updateAuthUi(user) {
+      activeUserId = user ? user.uid : USER_ID;
+      authStatus.textContent = user ? `Signed in as ${user.email || user.displayName}` : 'Not signed in';
+      authButton.textContent = user ? 'Sign out' : 'Sign in with Google';
+      if (unsubscribeReadingList) {
+        unsubscribeReadingList();
+      }
+      unsubscribeReadingList = onSnapshot(getListColRef(), snapshot => {
+        savedBooks = {};
+        snapshot.docs.forEach(docSnapshot => {
+          savedBooks[docSnapshot.id] = { id: docSnapshot.id, ...docSnapshot.data() };
+        });
+        renderReadingList();
+      }, error => {
+        console.error('Firestore snapshot error:', error);
+        searchStatus.textContent = 'Unable to sync reading list. Check your Firebase config.';
+      });
+    }
+
+    function signIn() {
+      signInWithPopup(auth, googleProvider).catch(error => {
+        console.error('Google sign-in failed:', error);
+        searchStatus.textContent = 'Google sign-in failed. Check the console for details.';
+      });
+    }
+
+    function signOutUser() {
+      signOut(auth).catch(error => {
+        console.error('Sign-out failed:', error);
+        searchStatus.textContent = 'Unable to sign out. Try again.';
+      });
+    }
+
+    onAuthStateChanged(auth, user => {
+      updateAuthUi(user);
+    });
+
+    function toggleMusic() {
+      if (musicActive) {
+        musicEmbedContainer.innerHTML = '';
+        musicToggleButton.textContent = 'Play lobby music';
+        musicActive = false;
+        return;
+      }
+      musicEmbedContainer.style.display = 'block';
+      musicEmbedContainer.innerHTML = `<iframe id="lobby-music-iframe" width="1" height="1" src="https://www.youtube.com/embed/52YtuJrvFYg?autoplay=1&loop=1&playlist=52YtuJrvFYg&controls=0&iv_load_policy=3&modestbranding=1" allow="autoplay; encrypted-media" style="border:0;position:absolute;left:-9999px;width:1px;height:1px;" title="Lobby music"></iframe>`;
+      musicToggleButton.textContent = 'Pause lobby music';
+      musicActive = true;
+    }
 
     function escHtml(value) {
       return String(value)
@@ -221,11 +307,18 @@
         savedAt: Date.now()
       };
 
-      await setDoc(doc(listColRef, id), payload);
+      await setDoc(doc(getListColRef(), id), payload);
+      if (saveCheerAudio) {
+        saveCheerAudio.volume = 0.18;
+        saveCheerAudio.currentTime = 0;
+        saveCheerAudio.play().catch(() => {
+          // ignore autoplay or focus restrictions
+        });
+      }
     }
 
     async function deleteBook(id) {
-      await deleteDoc(doc(listColRef, id));
+      await deleteDoc(doc(getListColRef(), id));
     }
 
     async function updateBookStatus(id, status) {
@@ -233,7 +326,7 @@
       if (!current || current.status === status) {
         return;
       }
-      await updateDoc(doc(listColRef, id), { status });
+      await updateDoc(doc(getListColRef(), id), { status });
     }
 
     searchForm.addEventListener('submit', async event => {
@@ -318,15 +411,16 @@
       });
     });
 
-    onSnapshot(listColRef, snapshot => {
-      savedBooks = {};
-      snapshot.docs.forEach(docSnapshot => {
-        savedBooks[docSnapshot.id] = { id: docSnapshot.id, ...docSnapshot.data() };
-      });
-      renderReadingList();
-    }, error => {
-      console.error('Firestore snapshot error:', error);
-      searchStatus.textContent = 'Unable to sync reading list. Check your Firebase config.';
+    authButton.addEventListener('click', () => {
+      if (auth.currentUser) {
+        signOutUser();
+      } else {
+        signIn();
+      }
+    });
+
+    musicToggleButton.addEventListener('click', () => {
+      toggleMusic();
     });
   </script>
 </body>

@@ -193,6 +193,45 @@ button {
   letter-spacing: 0.02em;
 }
 
+.hero-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 26px;
+}
+
+.hero-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px;
+  background: rgba(12, 18, 24, 0.95);
+  border: 1px solid rgba(141, 252, 122, 0.14);
+  border-radius: 18px;
+}
+
+.hero-card__label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.ghost-btn {
+  border: 1px solid rgba(141, 252, 122, 0.22);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--text);
+  padding: 12px 16px;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+
+.ghost-btn:hover {
+  background: rgba(141, 252, 122, 0.08);
+  border-color: var(--accent);
+}
+
 .status-line {
   margin: 0 0 22px;
   color: var(--muted);
